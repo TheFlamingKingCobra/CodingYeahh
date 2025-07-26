@@ -1,0 +1,45 @@
+import requests
+import json
+
+
+# Receiving using an openAI key from 'OpenRouter'
+
+
+
+def rephrase_sentence(sentence: str) -> str:
+    """
+    Rephrases the given sentence using OpenAI's API.
+
+    Args:
+        sentence (str): The sentence to be rephrased.
+
+    Returns:
+        str: The rephrased sentence.
+    """
+    prompt = f"Rephrase the following sentence:\n\"{sentence}\"\nRephrased version:"
+    try:
+        response = requests.post(
+        url="https://api.openai.com/v1/chat/completions",
+        headers={
+            "Authorization": "Bearer <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>",
+            "Content-Type": "application/json",
+        },
+        data=json.dumps({
+            "model": "deepseek/deepseek-chat-v3-0324:free",
+            "messages": [
+            {
+                "role": "user",
+                "content":  f"rephrase this in the same tonality and form, do not say anything more: '{sentence}'"
+            }
+            ],
+            
+        })
+        )
+    except Exception as e:
+        return f"Error: {e}"
+
+# Example usage:
+
+input_sentence = "The quick brown fox jumps over the lazy dog."
+print("Original:", input_sentence)
+print("Rephrased:", rephrase_sentence(input_sentence))
