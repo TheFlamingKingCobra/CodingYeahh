@@ -25,7 +25,7 @@ def rephrase_sentence(sentence: str) -> str:
             "Content-Type": "application/json",
         },
         data=json.dumps({
-            "model": "deepseek/deepseek-chat-v3-0324:free",
+            "model": "gpt-3.5-turbo",
             "messages": [
             {
                 "role": "user",
