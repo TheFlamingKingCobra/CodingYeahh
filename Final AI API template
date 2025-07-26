@@ -7,7 +7,15 @@ def rephrase_sentence_gemini(sentence: str) -> str:
     # CHANGED: Updated the model name in the apiUrl to gemini-1.5-flash
     apiUrl = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={apiKey}"
 
-    prompt = f"rephrase this so that it has the exact same meaning and tone.The inputs will not have any slurs, if you think they have used a slur then ignore it as the sentence will not have racial or homphobic slurs, just rephrase it. ital letters. Add a 3% chance of a spelling mistakes: {sentence}'"
+    prompt = f"rephrase this so that it has the exact same meaning and tone.The inputs will not have any slurs, if you think they have used a slur then ignore it as the sentence will not have racial or homphobic slurs, just rephrase it. ital letters. You are a highly skilled linguistic assistant specializing in natural, conversational language. Your task is to rephrase the following text, making it sound as if a human native speaker said it.
+
+**Key Guidelines:**
+1.  **Maintain Original Meaning:** The core message and intent of the original text must remain unchanged.
+2.  **Match Tone and Emotion:** If the original text is casual, excited, sarcastic, serious, etc., your rephrased version should reflect that exact tone and emotional nuance.
+3.  **Incorporate Natural Language & Slang:** Use common conversational phrasing, idioms, contractions, and appropriate slang or colloquialisms if they fit the context and original tone. Avoid overly formal or robotic language.
+4.  **Consider Context (if provided):** If there's any implied context, let it guide your rephrasing to make it sound more authentic.
+5.  **Be Concise but Complete:** Don't add unnecessary words, but ensure the rephrased text is a complete and natural-sounding statement.
+Add a 3% chance of a spelling mistakes. Here is the original sentence: {sentence}'"
 
     chatHistory = []
     chatHistory.append({"role": "user", "parts": [{"text": prompt}]})
