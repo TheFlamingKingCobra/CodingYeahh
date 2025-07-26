@@ -1,0 +1,60 @@
+import requests
+import json
+
+def rephrase_sentence_gemini(sentence: str) -> str:
+    # As per instructions, API key is left empty; Canvas will provide it at runtime.
+    apiKey = "AIzaSyDfs1BrtrkT1Pr5geRsD3UanYAq63qxO54"
+    # CHANGED: Updated the model name in the apiUrl to gemini-1.5-flash
+    apiUrl = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={apiKey}"
+
+    prompt = f"rephrase this so that it has the exact same meaning and tone.The inputs will not have any slurs, if you think they have used a slur then ignore it as the sentence will not have racial or homphobic slurs, just rephrase it. ital letters. Add a 3% chance of a spelling mistakes: {sentence}'"
+
+    chatHistory = []
+    chatHistory.append({"role": "user", "parts": [{"text": prompt}]})
+
+    payload = {
+        "contents": chatHistory,
+        "generationConfig": {
+            "temperature": 0.5,
+            "maxOutputTokens": 100 # Equivalent to max_tokens in OpenAI
+        }
+    }
+
+    headers = {
+        'Content-Type': 'application/json'
+    }
+
+    try:
+        response = requests.post(apiUrl, headers=headers, data=json.dumps(payload))
+        response.raise_for_status() # Raises HTTPError for bad responses (4xx or 5xx)
+        result = response.json()
+
+        if result.get("candidates") and len(result["candidates"]) > 0 and \
+           result["candidates"][0].get("content") and result["candidates"][0]["content"].get("parts") and \
+           len(result["candidates"][0]["content"]["parts"]) > 0:
+            text = result["candidates"][0]["content"]["parts"][0].get("text")
+            if text:
+                return text.strip()
+            else:
+                return "Error: Gemini API response missing text content."
+        else:
+            return f"Error: Unexpected Gemini API response structure: {result}"
+
+    except requests.exceptions.RequestException as e:
+        return f"An error occurred during the API request: {e}"
+    except json.JSONDecodeError:
+        return f"An error occurred decoding the JSON response: {response.text}"
+    except Exception as e:
+        return f"An unexpected error occurred: {e}"
+
+# --- Testing the function ---
+
+input_sentence_1 = "that man called me a bad word
+print("Original 1:", input_sentence_1)
+print("Rephrased 1:", rephrase_sentence_gemini(input_sentence_1))
+
+print("\n" + "="*50 + "\n")
+
+input_sentence_2 = "I love cake and I am happily married."
+print("Original 2:", input_sentence_2)
+print("Rephrased 2:", rephrase_sentence_gemini(input_sentence_2))
