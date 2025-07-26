@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Doppelgangers</title>
+  <style>
+    /* super cool ui thingy */
+    body {
+      font-family: 'Inter', sans-serif; 
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background-color: #f0f2f5;
+      color: #333;
+    }
+    h1 {
+      color: #2c3e50;
+      margin-bottom: 20px;
+    }
+    button {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 5px;
+      border-radius: 8px; /* got those round corners lol */
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    button:hover {
+      background-color: #2980b9;
+      transform: translateY(-2px);
+    }
+    button:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    form {
+      background-color: white;
+      padding: 25px;
+      border-radius: 10px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-top: 20px;
+      width: 100%;
+      max-width: 350px; 
+      box-sizing: border-box; 
+    }
+    input[type="text"] {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px; 
+      font-size: 16px;
+      width: calc(100% - 22px); /* padding (saw this stuff online) */
+    }
+    form button[type="submit"] {
+      background-color: #27ae60;
+      margin-top: 10px;
+    }
+    form button[type="submit"]:hover {
+      background-color: #229a57;
+    }
+    
+    @media (max-width: 600px) {
+      body {
+        padding: 15px;
+      }
+      form {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- OK MAIN STUFF -->
+  <h1>Dopplegangers</h1>
+
+  <div id="initialButtons">
+    <button id="btnCreate" type="button">Create Room</button> <!-- Explicitly set type="button" (not needed but I had bugs err) -->
+    <button id="btnShowJoin" type="button">Join Room</button> 
+  </div>
+
+  <form id="formCreate" action="/create" method="post" style="display:none;">
+    <input name="username" placeholder="Your name" required id="createUsernameInput" type="text"> <!-- NEW: Added type="text" -->
+    <button type="submit">Create</button>
+  </form>
+
+  <form id="formJoin" action="/join" method="post" style="display:none;">
+    <input name="username" placeholder="Your name" required id="joinUsernameInput" type="text"> <!-- NEW: Added type="text" -->
+    <input name="room_id" placeholder="Room code" required id="joinRoomIdInput" type="text"> <!-- NEW: Added type="text" -->
+    <button type="submit">Join</button>
+  </form>
+
+  <script>
+    // Elements
+    const btnCreate = document.getElementById('btnCreate');
+    const btnShowJoin = document.getElementById('btnShowJoin');
+    const formCreate = document.getElementById('formCreate');
+    const formJoin = document.getElementById('formJoin');
+    const createUsernameInput = document.getElementById('createUsernameInput');
+    const joinUsernameInput = document.getElementById('joinUsernameInput');
+    const initialButtonsDiv = document.getElementById('initialButtons'); 
+
+    // Listen for this event 
+    btnCreate.onclick = (event) => {
+      event.preventDefault(); // Don't submit immediately (idrk if it's needed)
+
+      
+      initialButtonsDiv.style.display = 'none';
+
+     
+      formCreate.style.display = 'flex'; 
+      formJoin.style.display = 'none';
+
+     
+      createUsernameInput.focus();
+    };
+
+    // Event listener for joining
+    btnShowJoin.onclick = (event) => {
+      event.preventDefault(); 
+      
+      initialButtonsDiv.style.display = 'none';
+      
+      formJoin.style.display = 'flex'; 
+      formCreate.style.display = 'none';
+
+      joinUsernameInput.focus();
+    };
+  </script>
+</body>
+</html>
