@@ -1,0 +1,57 @@
+import openai
+
+
+def rephrase_sentence_openai(sentence: str) -> str:
+    """
+    Rephrases the given sentence using OpenAI's official API.
+
+    Args:
+        sentence (str): The sentence to be rephrased.
+
+    Returns:
+        str: The rephrased sentence, or an error message.
+    """
+
+    openai.api_key = ("<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>")
+
+    if not openai.api_key:
+        return "Error: OPENAI_API_KEY environment variable not set. Please set it before running."
+
+    
+    # Construct the prompt with your specific instructions
+    # The AI will see: "rephrase this in the same tonality and form, do not say anything more: 'Your sentence here'"
+    prompt = f"rephrase this in the same tonality and form, do not say anything more: '{sentence}'"
+
+    try:
+        # Make the API call using the openai library
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",  # You can choose other models like "gpt-4" if you have access
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.5,  # Lower temperature for less creativity, more direct rephrasing
+            max_tokens=100    
+        )
+
+        # Extract the content from the AI's response
+        if response.choices and len(response.choices) > 0:
+            return response.choices[0].message.content.strip()
+        else:
+            return "Error: No response or unexpected response format from OpenAI."
+
+    except Exception as e:
+        # Catch any other unexpected errors
+        return f"An unexpected error occurred: {e}"
+
+
+input_sentence_1 = "I love charles dickens and I am not married rawr"
+print("Original 1:", input_sentence_1)
+rephrased_text_1 = rephrase_sentence_openai(input_sentence_1)
+print("Rephrased 1:", rephrased_text_1)
+
+print("\n" + "="*50 + "\n")
+
+input_sentence_2 = "I love cake and I am happily married."
+print("Original 2:", input_sentence_2)
+rephrased_text_2 = rephrase_sentence_openai(input_sentence_2)
+print("Rephrased 2:", rephrased_text_2)
