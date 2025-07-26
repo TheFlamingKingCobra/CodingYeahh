@@ -1,0 +1,35 @@
+import openai
+
+def rephrase_sentence_openai(sentence: str) -> str:
+    # Set your API key here directly or via environment variable for safety
+    openai.api_key = "<sk-proj-ix-mtAuXNBoX8WBwBfuXkU37DBeJSt8wrvhnUNayXIPa45iUhh60tdNvZUWSKWon-TVP5LbixIT3BlbkFjx3SHBGsSL6W4-rS0FNAMfw1jndqRdZPjonsHV7IYv1OFqhfL32S1R1PHhXQUeLWVyb068Ffn4A>"
+
+    if not openai.api_key:
+        return "Error: OPENAI_API_KEY not set."
+
+    prompt = f"rephrase this in the same tonality and form, do not say anything more: '{sentence}'"
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=100
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        return f"An unexpected error occurred: {e}"
+
+
+
+input_sentence_1 = "I love charles dickens and I am not married rawr"
+print("Original 1:", input_sentence_1)
+print("Rephrased 1:", rephrase_sentence_openai(input_sentence_1))
+
+print("\n" + "="*50 + "\n")
+
+input_sentence_2 = "I love cake and I am happily married."
+print("Original 2:", input_sentence_2)
+print("Rephrased 2:", rephrase_sentence_openai(input_sentence_2))
