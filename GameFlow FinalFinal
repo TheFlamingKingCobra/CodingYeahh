@@ -1,0 +1,288 @@
+from flask import Flask, request, jsonify
+from flask_socketio import SocketIO, emit, join_room, leave_room
+import random
+import threading
+import time
+
+app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Load prompts from file
+def load_prompts(file_path='prompts.txt'):
+    try:
+        with open(file_path, 'r') as f:
+            return [line.strip() for line in f if line.strip()]
+    except FileNotFoundError:
+        return ["Default prompt: describe your favorite day."]
+
+PROMPTS = load_prompts()
+
+games = {}
+timers = {}
+players_in_room = {}
+MAX_ROUNDS = 5
+
+# --- New global dict to track player coins ---
+player_coins = {}  # {user_id: coin_count}
+
+# --- Helper Functions ---
+def generate_ai_answer(user_id, prompt):
+    return f"AI response for {user_id}: {prompt[::-1]}"
+
+def create_new_game(room_id):
+    games[room_id] = {
+        "round": 1,
+        "max_rounds": MAX_ROUNDS,
+        "prompts": PROMPTS.copy(),
+        "current_prompt": None,
+        "real_answers": {},
+        "ai_answers": {},
+        "guesses": {},
+        "scores": {},
+        "stats": {}
+    }
+
+# --- Timer Thread with Phase Progression ---
+class StoppableTimerThread(threading.Thread):
+    def __init__(self, room_id, duration, phase, on_end=None):
+        super().__init__(daemon=True)
+        self.room_id = room_id
+        self.duration = duration
+        self.phase = phase
+        self._stop_event = threading.Event()
+        self.on_end = on_end
+
+    def run(self):
+        end = time.time() + self.duration
+        timers[self.room_id] = {'end_time': end, 'phase': self.phase, 'thread': self}
+
+        socketio.emit('phase_started', {'phase': self.phase, 'duration': self.duration}, room=self.room_id)
+
+        while time.time() < end and not self._stop_event.is_set():
+            socketio.emit(
+                'timer_update',
+                {'time_left': int(end - time.time()), 'phase': self.phase},
+                room=self.room_id
+            )
+            time.sleep(1)
+
+        if not self._stop_event.is_set():
+            self.finish_phase()
+
+    def finish_phase(self):
+        socketio.emit('phase_ended', {'phase': self.phase}, room=self.room_id)
+        timers.pop(self.room_id, None)
+        if self.on_end:
+            self.on_end(self.room_id)
+
+    def stop(self):
+        self._stop_event.set()
+        timers.pop(self.room_id, None)
+        socketio.emit('phase_ended', {'phase': self.phase}, room=self.room_id)
+        if self.on_end:
+            self.on_end(self.room_id)
+
+def start_phase_timer(room_id, phase, duration, on_end=None):
+    if room_id in timers:
+        timers[room_id]['thread'].stop()
+    t = StoppableTimerThread(room_id, duration, phase, on_end=on_end)
+    t.start()
+    timers[room_id] = {'thread': t}
+
+# --- New helper to award coins when results phase starts ---
+def award_coins_for_points(room_id):
+    g = games.get(room_id)
+    if not g:
+        return
+    # Award 1 coin to each player who has a score entry
+    for user in g['scores'].keys():
+        player_coins[user] = player_coins.get(user, 0) + 1
+
+# --- Phase Handlers ---
+def start_answer_phase(room_id):
+    g = games.get(room_id)
+    if not g:
+        return
+    if not g["current_prompt"]:
+        if not g["prompts"]:
+            g["prompts"] = PROMPTS.copy()
+        g["current_prompt"] = random.choice(g["prompts"])
+        g["prompts"].remove(g["current_prompt"])
+    socketio.emit('new_prompt', {'prompt': g['current_prompt'], 'round': g['round']}, room=room_id)
+    start_phase_timer(room_id, 'answer_submission', 30, on_end=start_voting_phase)
+
+def start_voting_phase(room_id):
+    socketio.emit('voting_start', {'round': games[room_id]['round']}, room=room_id)
+    start_phase_timer(room_id, 'voting', 30, on_end=start_results_phase)
+
+def start_results_phase(room_id):
+    # Award coins here before emitting results
+    award_coins_for_points(room_id)
+
+    socketio.emit('results_start', {'scores': games[room_id]['scores']}, room=room_id)
+    start_phase_timer(room_id, 'results', 10, on_end=advance_round_auto)
+
+def advance_round_auto(room_id):
+    g = games.get(room_id)
+    if not g:
+        return
+    if g['round'] >= g['max_rounds']:
+        socketio.emit('game_over', {'final_summary': build_summary(room_id)}, room=room_id)
+        games.pop(room_id, None)
+        return
+
+    g.update({
+        "round": g["round"] + 1,
+        "current_prompt": None,
+        "real_answers": {},
+        "ai_answers": {},
+        "guesses": {}
+    })
+    start_answer_phase(room_id)
+
+# --- Summary Builder ---
+def build_summary(room_id):
+    g = games.get(room_id, {})
+    scores = g.get('scores', {})
+    stats = g.get('stats', {})
+    if not scores:
+        return {"leaderboard": [], "awards": {}}
+
+    max_s = max(scores.values())
+    min_s = min(scores.values())
+    leaderboard = sorted(scores.items(), key=lambda x: -x[1])
+    top_detectives = [p for p, s in scores.items() if s == max_s]
+    most_fooled = [p for p, s in scores.items() if s == min_s]
+
+    awards = {
+        "Top Detective": {
+            "players": top_detectives,
+            "max_streak": max(stats.get(p, {}).get("max_streak", 0) for p in top_detectives)
+        },
+        "Most Fooled by AI": {
+            "players": most_fooled,
+            "wrong_guesses": {p: stats.get(p, {}).get("wrong", 0) for p in most_fooled}
+        }
+    }
+    return {"leaderboard": leaderboard, "awards": awards}
+
+# --- Socket Events ---
+@socketio.on('join_room')
+def on_join(data):
+    room = data.get('room_id')
+    user = data.get('user_id')
+    if room and user:
+        join_room(room)
+        players_in_room.setdefault(room, set()).add(user)
+        emit('status', {'msg': f'{user} has joined {room}.'}, room=room)
+
+@socketio.on('leave_room')
+def on_leave(data):
+    room = data.get('room_id')
+    user = data.get('user_id')
+    if room and user:
+        leave_room(room)
+        if room in players_in_room:
+            players_in_room[room].discard(user)
+        emit('status', {'msg': f'{user} has left {room}.'}, room=room)
+
+# --- Game Endpoints ---
+@app.route('/game/start', methods=['POST'])
+def start_game():
+    room = request.json.get('room_id')
+    if not room:
+        return jsonify({"error": "room_id is required"}), 400
+    create_new_game(room)
+    start_answer_phase(room)
+    return jsonify({"message": f"Game started in {room}", "max_rounds": MAX_ROUNDS})
+
+@app.route('/game/submit_answer', methods=['POST'])
+def submit_answer():
+    data = request.json
+    room = data.get('room_id')
+    user = data.get('user_id')
+    answer = data.get('answer')
+
+    if not all([room, user, answer]):
+        return jsonify({"error": "room_id, user_id, and answer are required"}), 400
+    if room not in games:
+        return jsonify({"error": "Invalid room_id"}), 400
+    if len(answer.strip().split()) < 5:
+        return jsonify({"error": "Response must contain at least five words"}), 400
+
+    if room not in timers or timers[room]['phase'] != 'answer_submission':
+        return jsonify({"error": "The answer submission phase has ended"}), 400
+    if time.time() > timers[room]['end_time']:
+        return jsonify({"error": "The answer submission time has elapsed"}), 400
+
+    g = games[room]
+    prompt = g['current_prompt']
+    if not prompt:
+        return jsonify({"error": "No prompt set"}), 400
+
+    g['real_answers'][user] = answer
+    g['ai_answers'][user] = generate_ai_answer(user, prompt)
+    g['scores'].setdefault(user, 0)
+    g['stats'].setdefault(user, {"correct": 0, "wrong": 0, "streak": 0, "max_streak": 0})
+
+    # If all players submitted, end early and start voting
+    expected_players = players_in_room.get(room, set())
+    if expected_players and expected_players.issubset(set(g['real_answers'].keys())):
+        if room in timers and timers[room]['phase'] == 'answer_submission':
+            timers[room]['thread'].stop()
+
+    return jsonify({"message": f"Response saved for {user}", "ai_response": g['ai_answers'][user]})
+
+@app.route('/game/submit_guess', methods=['POST'])
+def submit_guess():
+    data = request.json
+    room = data.get('room_id')
+    user = data.get('user_id')
+    guesses = data.get('guesses', {})
+
+    if not all([room, user]):
+        return jsonify({"error": "room_id and user_id are required"}), 400
+    if room not in games:
+        return jsonify({"error": "Invalid room_id"}), 400
+    if room not in timers or timers[room]['phase'] != 'voting':
+        return jsonify({"error": "The voting phase has ended"}), 400
+    if time.time() > timers[room]['end_time']:
+        return jsonify({"error": "The voting time has elapsed"}), 400
+
+    g = games[room]
+    g['guesses'][user] = guesses
+    g['scores'].setdefault(user, 0)
+    g['stats'].setdefault(user, {"correct": 0, "wrong": 0, "streak": 0, "max_streak": 0})
+
+    # If all players have voted, end voting early
+    expected_players = players_in_room.get(room, set())
+    if expected_players and expected_players.issubset(set(g['guesses'].keys())):
+        if room in timers and timers[room]['phase'] == 'voting':
+            timers[room]['thread'].stop()
+
+    return jsonify({"message": f"Guesses saved for {user}"})
+
+# --- New API endpoints for coins ---
+@app.route('/coins/get', methods=['GET'])
+def get_coins():
+    user = request.args.get('user_id')
+    if not user:
+        return jsonify({"error": "user_id is required"}), 400
+    coins = player_coins.get(user, 0)
+    return jsonify({"user_id": user, "coins": coins})
+
+@app.route('/coins/spend', methods=['POST'])
+def spend_coins():
+    data = request.json
+    user = data.get('user_id')
+    amount = data.get('amount')
+    if not user or amount is None:
+        return jsonify({"error": "user_id and amount are required"}), 400
+    current = player_coins.get(user, 0)
+    if amount > current:
+        return jsonify({"error": "Insufficient coins"}), 400
+    player_coins[user] = current - amount
+    return jsonify({"message": f"{amount} coins spent", "remaining": player_coins[user]})
+
+if __name__ == '__main__':
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
